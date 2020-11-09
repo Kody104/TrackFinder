@@ -39,6 +39,7 @@ public class ArtistSearchFrame extends JFrame {
     	searchBtn.addActionListener(new SearchActionListener(this));
     	mainPanel.add(searchBtn);
     	
+    	this.getRootPane().setDefaultButton(searchBtn);
     	this.add(mainPanel);
     	this.setVisible(true);
 	}

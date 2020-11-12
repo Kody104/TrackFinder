@@ -13,20 +13,27 @@ import com.wrapper.spotify.SpotifyHttpManager;
 import com.wrapper.spotify.enums.ModelObjectType;
 import com.wrapper.spotify.exceptions.SpotifyWebApiException;
 import com.wrapper.spotify.model_objects.credentials.AuthorizationCodeCredentials;
+import com.wrapper.spotify.model_objects.miscellaneous.AudioAnalysis;
 import com.wrapper.spotify.model_objects.special.SearchResult;
 import com.wrapper.spotify.model_objects.specification.AlbumSimplified;
 import com.wrapper.spotify.model_objects.specification.Artist;
 import com.wrapper.spotify.model_objects.specification.AudioFeatures;
 import com.wrapper.spotify.model_objects.specification.Paging;
+import com.wrapper.spotify.model_objects.specification.Track;
 import com.wrapper.spotify.model_objects.specification.TrackSimplified;
 import com.wrapper.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
 import com.wrapper.spotify.requests.data.albums.GetAlbumsTracksRequest;
 import com.wrapper.spotify.requests.data.artists.GetArtistsAlbumsRequest;
+import com.wrapper.spotify.requests.data.artists.GetArtistsRelatedArtistsRequest;
+import com.wrapper.spotify.requests.data.artists.GetArtistsTopTracksRequest;
 import com.wrapper.spotify.requests.data.search.SearchItemRequest;
 import com.wrapper.spotify.requests.data.search.simplified.SearchArtistsRequest;
+import com.wrapper.spotify.requests.data.tracks.GetAudioAnalysisForTrackRequest;
 import com.wrapper.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 
 public class SpotifyHelper {
+	public static boolean quickSearch = true;
+	private static int queries = 0;
 	private static final String clientId = "b2398df50ee0449b933bb3e72abdff18";
 	private static final String clientSecret = "0a786b62e04e49848498c75560baf2f8";
 	private static final URI redirectUri = SpotifyHttpManager.makeUri("http://localhost:8888/callback");
@@ -37,7 +44,25 @@ public class SpotifyHelper {
 			.setRedirectUri(redirectUri)
 			.setRefreshToken(refreshToken)
 			.build();
+	public static void setQuickSearch(boolean quickSearch) {
+		SpotifyHelper.quickSearch = quickSearch;
+	}
+	public static boolean getQuickSearch() {
+		return SpotifyHelper.quickSearch;
+	}
+	private static void query() {
+		queries++;
+		System.out.println("Queries: " + queries + "(Quick Search: " + quickSearch + ")" + "\n");
+		if(!quickSearch) {
+			try {
+				Thread.sleep(50L);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
 	 private static void authorizationCodeRefresh_Sync() {
+		 query();
 		 try {
 			 final AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest = spotifyApi.authorizationCodeRefresh().build();
 			 final AuthorizationCodeCredentials authorizationCodeCredentials = authorizationCodeRefreshRequest.execute();
@@ -55,6 +80,7 @@ public class SpotifyHelper {
 	  * @return	The search result of the search
 	  */
 	 public static SearchResult searchItem_Sync(String search, ModelObjectType mot) {
+		 query();
 		 try {
 			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
 				 authorizationCodeRefresh_Sync();
@@ -74,6 +100,7 @@ public class SpotifyHelper {
 	  * @return	The artists returned from the search
 	  */
 	 public static Paging<Artist> searchArtist_Sync(String artistName) {
+		 query();
 		 try {
 			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
 				 authorizationCodeRefresh_Sync();
@@ -88,11 +115,32 @@ public class SpotifyHelper {
 		 return null;
 	 }
 	 /**
+	  * Returns the top tracks of a specified artist id.
+	  * @param id	The artist's id	
+	  * @return	The top tracks of the artist
+	  */
+	 public static Track[] getArtistsTopTracks_Sync(String id) {
+		 query();
+		 try {
+			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
+				 authorizationCodeRefresh_Sync();
+			 }
+			 final GetArtistsTopTracksRequest getArtistsTopTracksRequest = spotifyApi.getArtistsTopTracks(id, CountryCode.US).build();
+			 final Track[] topTracks = getArtistsTopTracksRequest.execute();
+			 
+			 return topTracks;
+		 } catch (IOException | SpotifyWebApiException | ParseException e) {
+		      System.out.println("Error: " + e.getMessage());
+		 }
+		 return null;
+	 }
+	 /**
 	  * Return the albums of an artist by the artist ID.
 	  * @param id	The id of the artist
 	  * @return	The albums of the artist.
 	  */
 	 public static Paging<AlbumSimplified> searchArtistAlbums_Sync(String id) {
+		 query();
 		 try {
 			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
 				 authorizationCodeRefresh_Sync();
@@ -107,6 +155,7 @@ public class SpotifyHelper {
 		 }
 		 return null;
 	 }
+	 
 	 public static String[] searchArtistsAlbumsString_Sync(String id) {
 		 final Paging<AlbumSimplified> albumsReturned = searchArtistAlbums_Sync(id);
 		 List<String> albumsListed = new ArrayList<String>();
@@ -126,6 +175,7 @@ public class SpotifyHelper {
 	  * @return	The tracklist of the album
 	  */
 	 public static Paging<TrackSimplified> searchAlbumsTracklist_Sync(String id) {
+		 query();
 		 try {
 			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
 				 authorizationCodeRefresh_Sync();
@@ -139,6 +189,7 @@ public class SpotifyHelper {
 		 }
 		 return null;
 	 }
+	 
 	 public static String[] searchAlbumsTracklistStrings_Sync(String id) {
 		 final Paging<TrackSimplified> tracklistReturned = searchAlbumsTracklist_Sync(id);
 		 List<String> tracklistListed = new ArrayList<String>();
@@ -153,11 +204,32 @@ public class SpotifyHelper {
 		 return tracklistStrings;
 	 }
 	 /**
+	  * Returns the related artists to the artist id given.
+	  * @param id	The id of the artist
+	  * @return	The artists that are related to the artist
+	  */
+	 public static Artist[] getRelatedArtistsToArtist(String id) {
+		 query();
+		 try {
+			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
+				 authorizationCodeRefresh_Sync();
+			 }
+			 final GetArtistsRelatedArtistsRequest getArtistsRelatedArtists = spotifyApi.getArtistsRelatedArtists(id).build();
+			 final Artist[] relatedArtists = getArtistsRelatedArtists.execute();
+			 
+			 return relatedArtists;
+		 } catch (IOException | SpotifyWebApiException | ParseException e) {
+		      System.out.println("Error: " + e.getMessage());
+		 }
+		 return null;
+	 }
+	 /**
 	  * Returns the track's audio features by the track ID.
 	  * @param id	The id of the track
 	  * @return	The audio features of the track
 	  */
 	 public static AudioFeatures getTrackAudioFeatures_Sync(String id) {
+		 query();
 		 try {
 			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
 				 authorizationCodeRefresh_Sync();
@@ -166,6 +238,26 @@ public class SpotifyHelper {
 			 final AudioFeatures trackAudioFeatures = getAudioFeatures.execute();
 			 
 			 return trackAudioFeatures;
+		 } catch (IOException | SpotifyWebApiException | ParseException e) {
+		      System.out.println("Error: " + e.getMessage());
+		 }
+		 return null;
+	 }
+	 /**
+	  * Returns the track's audio analysis by the track ID.
+	  * @param id	The id of the track
+	  * @return	The audio analysis of the track
+	  */
+	 public static AudioAnalysis getTrackAudioAnalysis_Sync(String id) {
+		 query();
+		 try {
+			 if(System.currentTimeMillis() >= App.REFRESH_TIMER) {
+				 authorizationCodeRefresh_Sync();
+			 }
+			 final GetAudioAnalysisForTrackRequest getAudioAnalysis = spotifyApi.getAudioAnalysisForTrack(id).build();
+			 final AudioAnalysis trackAudioAnalysis = getAudioAnalysis.execute();
+			 
+			 return trackAudioAnalysis;
 		 } catch (IOException | SpotifyWebApiException | ParseException e) {
 		      System.out.println("Error: " + e.getMessage());
 		 }

@@ -4,10 +4,11 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowEvent;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -43,15 +44,19 @@ public class AlbumTrackViewFrame extends JFrame {
 	private AudioFeatures[] currentAudioFeatures;
 	
 	private JMenu compareMenu;
+	private JMenu similarMenu;
+	private JCheckBoxMenuItem toggleLimiter;
 	private JComboBox<String> albumComboBox;
 	private JComboBox<String> metadataComboBox;
 	private JTextArea tracklistDisplay;
+	private JTextArea compareDisplay;
 	private JTextArea metadataDescription;
 	
-	private Map<String, Map<String, AudioFeatures>> savedTrackAudioFeatures;
-	private Map<String, String> savedAlbumTitles;
+	private List<AlbumData> savedAlbums;
+	private AlbumData loadedAlbum;
 	
-	private String summarizedData;
+	private String currentSummarizedData;
+	private String loadedSummarizedData;
 	
 	public AlbumTrackViewFrame() {
 		thisFrame = this;
@@ -61,9 +66,9 @@ public class AlbumTrackViewFrame extends JFrame {
     	this.setResizable(false);
     	this.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
     	
-    	savedTrackAudioFeatures = new HashMap<String, Map<String, AudioFeatures>>();
-    	savedAlbumTitles = new HashMap<String, String>();
-    	summarizedData = "";
+    	savedAlbums = new ArrayList<AlbumData>();
+    	currentSummarizedData = "";
+    	loadedSummarizedData = "";
     	
     	JPanel panel = new JPanel();
     	panel.setLayout(null);
@@ -74,25 +79,44 @@ public class AlbumTrackViewFrame extends JFrame {
     			"The file menu");
     	
     	JMenuItem saveItem = new JMenuItem("Save Album Metadata");
-    	saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, ActionEvent.ALT_MASK));
+    	saveItem.setMnemonic(KeyEvent.VK_S);
+    	saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, ActionEvent.CTRL_MASK));
     	saveItem.addActionListener(new ActionListener() {
     		
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				saveAudioFeaturesOfTrack();
+				saveAlbum();
 			}
     	});
     	menu.add(saveItem);
     	
     	compareMenu = new JMenu("Compare");
+    	compareMenu.setMnemonic(KeyEvent.VK_C);
     	compareMenu.getAccessibleContext().setAccessibleDescription(
     			"The compare menu");
     	
     	updateCompareMenu();
     	menu.add(compareMenu);
     	
+    	similarMenu = new JMenu("Similarities");
+    	similarMenu.setMnemonic(KeyEvent.VK_M);
+    	similarMenu.getAccessibleContext().setAccessibleDescription(
+    			"The similarities menu");
+    	updateSimilarMenu();
+    	menu.add(similarMenu);
+    	
+    	toggleLimiter = new JCheckBoxMenuItem("Quick Search");
+    	toggleLimiter.setState(true);
+    	toggleLimiter.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				SpotifyHelper.setQuickSearch(toggleLimiter.getState());
+			}
+    	});
+    	
     	JMenuItem exitItem = new JMenuItem("Close");
-    	exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, ActionEvent.ALT_MASK));
+    	exitItem.setMnemonic(KeyEvent.VK_O);
+    	exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, ActionEvent.CTRL_MASK));
     	exitItem.addActionListener(new ActionListener(){
 			@Override
 			public void actionPerformed(ActionEvent e) {
@@ -116,6 +140,9 @@ public class AlbumTrackViewFrame extends JFrame {
     		public void setSelectedIndex(int anIndex) {
     			super.setSelectedIndex(anIndex);
     			updateTracklistDisplay(anIndex);
+    			if(loadedAlbum != null) {
+    				updateCompareDisplay(anIndex);
+    			}
     		}
     	};
     	metadataComboBox.setBounds(125, 70, 140, 20);
@@ -138,9 +165,17 @@ public class AlbumTrackViewFrame extends JFrame {
     	tracklistDisplay.setBounds(this.getSize().width/2, 10, 1000, 1000);
     	tracklistDisplay.setEditable(false);
     	
-    	JScrollPane scrollPane = new JScrollPane(tracklistDisplay);
-    	scrollPane.setBounds(this.getSize().width/2, 10, 370, 540);
-    	panel.add(scrollPane);
+    	JScrollPane scrollPane1 = new JScrollPane(tracklistDisplay);
+    	scrollPane1.setBounds(this.getSize().width/2, 10, 370, 540/2);
+    	panel.add(scrollPane1);
+    	
+    	compareDisplay = new JTextArea();
+    	compareDisplay.setBounds(this.getSize().width, 280, 1000, 1000);
+    	compareDisplay.setEditable(false);
+    	
+    	JScrollPane scrollPane2 = new JScrollPane(compareDisplay);
+    	scrollPane2.setBounds(this.getSize().width/2, 290, 370, 500/2);
+    	panel.add(scrollPane2);
     	
     	JLabel metadataDescLbl = new JLabel("Description");
     	metadataDescLbl.setBounds(163, 200, 85, 20);
@@ -161,7 +196,10 @@ public class AlbumTrackViewFrame extends JFrame {
 
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				tracklistDisplay.setText(tracklistDisplay.getText() + summarizedData);
+				tracklistDisplay.setText(tracklistDisplay.getText() + currentSummarizedData);
+				if(loadedAlbum != null) {
+					compareDisplay.setText(compareDisplay.getText() + loadedSummarizedData);
+				}
 			}
     	});
     	panel.add(summarizeAlbumBtn);
@@ -170,11 +208,11 @@ public class AlbumTrackViewFrame extends JFrame {
 	}
 	
 	private void updateTracklistDisplay(int index) {
-		String toDisplay = "";
-		summarizedData = "";
-		if(currentTracklist == null) {
+		currentSummarizedData = "";
+		if(currentTracklist == null && currentAlbum == null) {
 			return;
 		}
+		String toDisplay = String.format("--- %s by %s ---\n", currentAlbum.getName(), currentAlbum.getArtists()[0].getName());
 		switch(index) {
 			case 0:
 			{
@@ -186,7 +224,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				secs = ((secs / 1000) / currentTracklist.getItems().length);
 				metadataDescription.setText("The duration of the track in seconds.");
-				summarizedData = String.format("\n\nAverage duration of album: %d seconds.", secs);
+				currentSummarizedData = String.format("\n\nAverage duration of album: %d seconds.", secs);
 				break;
 			}
 			case 1:
@@ -281,7 +319,7 @@ public class AlbumTrackViewFrame extends JFrame {
 					if(currentAudioFeatures[i].getMode() == Modality.MAJOR) majorCount++; else minorCount++;
 				}
 				metadataDescription.setText("Mode indicates the modality (major or minor) of a track, the type of scale from which its melodic content is derived.");
-				summarizedData = String.format("\n\nAlbum is " + (majorCount == minorCount ? "even." : (majorCount > minorCount ? "mostly major." : "mostly minor.")));
+				currentSummarizedData = String.format("\n\nAlbum is " + (majorCount == minorCount ? "even." : (majorCount > minorCount ? "mostly major." : "mostly minor.")));
 				break;
 			}
 			case 3:
@@ -303,7 +341,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				acoustics /= currentTracklist.getItems().length;
 				metadataDescription.setText("A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.");
-				summarizedData = String.format("\n\nAverage acousticness of album: %.2f", acoustics);
+				currentSummarizedData = String.format("\n\nAverage acousticness of album: %.2f", acoustics);
 				break;
 			}
 			case 5:
@@ -316,7 +354,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				danceability /= currentTracklist.getItems().length;
 				metadataDescription.setText("Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable.");
-				summarizedData = String.format("\n\nAverage dance-ability of album: %.2f", danceability);
+				currentSummarizedData = String.format("\n\nAverage dance-ability of album: %.2f", danceability);
 				break;
 			}
 			case 6:
@@ -329,7 +367,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				energy /= currentTracklist.getItems().length;
 				metadataDescription.setText("Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.");
-				summarizedData = String.format("\n\nAverage energy of album: %.2f", energy);
+				currentSummarizedData = String.format("\n\nAverage energy of album: %.2f", energy);
 				break;
 			}
 			case 7:
@@ -342,7 +380,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				instrumentals /= currentTracklist.getItems().length;
 				metadataDescription.setText("Predicts whether a track contains no vocals. “Ooh” and “aah” sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly “vocal”. The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0.");
-				summarizedData = String.format("\n\nAverage instrumentalness of album: %.2f", instrumentals);
+				currentSummarizedData = String.format("\n\nAverage instrumentalness of album: %.2f", instrumentals);
 				break;
 			}
 			case 8:
@@ -355,7 +393,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				liveness /= currentTracklist.getItems().length;
 				metadataDescription.setText("Detects the presence of an audience in the recording. Higher liveness values represent an increased probability that the track was performed live. A value above 0.8 provides strong likelihood that the track is live.");
-				summarizedData = String.format("\n\nAverage liveness of album: %.2f", liveness);
+				currentSummarizedData = String.format("\n\nAverage liveness of album: %.2f", liveness);
 				break;
 			}
 			case 9:
@@ -368,7 +406,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				loudness /= currentTracklist.getItems().length;
 				metadataDescription.setText("The overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Loudness is the quality of a sound that is the primary psychological correlate of physical strength (amplitude). Values typical range between -60 and 0 db.");
-				summarizedData = String.format("\n\nAverage loudness of album: %.2f dB", loudness);
+				currentSummarizedData = String.format("\n\nAverage loudness of album: %.2f dB", loudness);
 				break;
 			}
 			case 10:
@@ -381,7 +419,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				speech /= currentTracklist.getItems().length;
 				metadataDescription.setText("Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the closer to 1.0 the attribute value. Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks.");
-				summarizedData = String.format("\n\nAverage speechiness of album: %.2f", speech);
+				currentSummarizedData = String.format("\n\nAverage speechiness of album: %.2f", speech);
 				break;
 			}
 			case 11:
@@ -394,7 +432,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				valence /= currentTracklist.getItems().length;
 				metadataDescription.setText("A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).");
-				summarizedData = String.format("\n\nAverage valence of album: %.2f", valence);
+				currentSummarizedData = String.format("\n\nAverage valence of album: %.2f", valence);
 				break;
 			}
 			case 12:
@@ -407,11 +445,433 @@ public class AlbumTrackViewFrame extends JFrame {
 				}
 				tempo /= currentTracklist.getItems().length;
 				metadataDescription.setText("The overall estimated tempo of a track in beats per minute (BPM). In musical terminology, tempo is the speed or pace of a given piece and derives directly from the average beat duration.");
-				summarizedData = String.format("\n\nAverage tempo of album: %.2f BPM", tempo);
+				currentSummarizedData = String.format("\n\nAverage tempo of album: %.2f BPM", tempo);
 				break;
 			}
 		}
 		tracklistDisplay.setText(toDisplay);
+	}
+	
+	private void updateCompareDisplay(int index) {
+		loadedSummarizedData = "";
+		if(loadedAlbum == null) {
+			return;
+		}
+		String toDisplay = String.format("--- %s by %s ---\n", loadedAlbum.getAlbum().getName(), loadedAlbum.getAlbum().getArtists()[0].getName());
+		switch(index) {
+			case 0:
+			{
+				int secs = 0;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Duration: %s seconds\n", track.getTrackNumber(), track.getName(), "" + (track.getDurationMs() / 1000));
+					secs += track.getDurationMs();
+				}
+				secs = ((secs / 1000) / loadedAlbum.getTracklist().length);
+				loadedSummarizedData = String.format("\n\nAverage duration of album: %d seconds.", secs);
+				break;
+			}
+			case 1:
+			{
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					String key = "";
+					switch(loadedAlbum.getAudioFeature(i).getKey()) {
+						case -1: 
+						{
+							key = "Undetected";
+							break;
+						}
+						case 0:
+						{
+							key = "C";
+							break;
+						}
+						case 1:
+						{
+							key = "C# / Db";
+							break;
+						}
+						case 2:
+						{
+							key = "D";
+							break;
+						}
+						case 3:
+						{
+							key = "D# / Eb";
+							break;
+						}
+						case 4:
+						{
+							key = "E";
+							break;
+						}
+						case 5:
+						{
+							key = "F";
+							break;
+						}
+						case 6:
+						{
+							key = "F# / Gb";
+							break;
+						}
+						case 7:
+						{
+							key = "G";
+							break;
+						}
+						case 8:
+						{
+							key = "G# / Ab";
+							break;
+						}
+						case 9:
+						{
+							key = "A";
+							break;
+						}
+						case 10:
+						{
+							key = "A# / Bb";
+							break;
+						}
+						case 11:
+						{
+							key = "B";
+							break;
+						}
+						default:
+						{
+							key = "UNDEFINED";
+							break;
+						}
+					}
+					toDisplay += String.format("%d. %s   |   Key: %s\n", track.getTrackNumber(), track.getName(), key);
+				}
+				break;
+			}
+			case 2:
+			{
+				int majorCount = 0;
+				int minorCount = 0;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Modality: %s\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getMode().toString());
+					if(loadedAlbum.getAudioFeature(i).getMode() == Modality.MAJOR) majorCount++; else minorCount++;
+				}
+				loadedSummarizedData = String.format("\n\nAlbum is " + (majorCount == minorCount ? "even." : (majorCount > minorCount ? "mostly major." : "mostly minor.")));
+				break;
+			}
+			case 3:
+			{
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Time Signature: %s\n", track.getTrackNumber(), track.getName(), "" + loadedAlbum.getAudioFeature(i).getTimeSignature());
+				}
+				break;
+			}
+			case 4:
+			{
+				float acoustics = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Acousticness: %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getAcousticness());
+					acoustics += loadedAlbum.getAudioFeature(i).getAcousticness();
+				}
+				acoustics /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage acousticness of album: %.2f", acoustics);
+				break;
+			}
+			case 5:
+			{
+				float danceability = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Danceability: %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getDanceability());
+					danceability += loadedAlbum.getAudioFeature(i).getDanceability();
+				}
+				danceability /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage dance-ability of album: %.2f", danceability);
+				break;
+			}
+			case 6:
+			{
+				float energy = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Energy: %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getEnergy());
+					energy += loadedAlbum.getAudioFeature(i).getEnergy();
+				}
+				energy /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage energy of album: %.2f", energy);
+				break;
+			}
+			case 7:
+			{
+				float instrumentals = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Instrumentalness: %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getInstrumentalness());
+					instrumentals += loadedAlbum.getAudioFeature(i).getInstrumentalness();
+				}
+				instrumentals /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage instrumentalness of album: %.2f", instrumentals);
+				break;
+			}
+			case 8:
+			{
+				float liveness = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Liveness: %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getLiveness());
+					liveness += loadedAlbum.getAudioFeature(i).getLiveness();
+				}
+				liveness /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage liveness of album: %.2f", liveness);
+				break;
+			}
+			case 9:
+			{
+				float loudness = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Loudness: %.2f dB\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getLoudness());
+					loudness += loadedAlbum.getAudioFeature(i).getLoudness();
+				}
+				loudness /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage loudness of album: %.2f dB", loudness);
+				break;
+			}
+			case 10:
+			{
+				float speech = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Speechiness %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getSpeechiness());
+					speech += loadedAlbum.getAudioFeature(i).getSpeechiness();
+				}
+				speech /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage speechiness of album: %.2f", speech);
+				break;
+			}
+			case 11:
+			{
+				float valence = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Valence: %.2f\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getValence());
+					valence += loadedAlbum.getAudioFeature(i).getValence();
+				}
+				valence /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage valence of album: %.2f", valence);
+				break;
+			}
+			case 12:
+			{
+				float tempo = 0.0f;
+				for(int i = 0; i < loadedAlbum.getTracklist().length; i++) {
+					TrackSimplified track = loadedAlbum.getTrack(i);
+					toDisplay += String.format("%d. %s   |   Tempo: %.2f BPM\n", track.getTrackNumber(), track.getName(), loadedAlbum.getAudioFeature(i).getTempo());
+					tempo += loadedAlbum.getAudioFeature(i).getTempo();
+				}
+				tempo /= loadedAlbum.getTracklist().length;
+				loadedSummarizedData = String.format("\n\nAverage tempo of album: %.2f BPM", tempo);
+				break;
+			}
+		}
+		compareDisplay.setText(toDisplay);
+	}
+	
+	private void updateSimilarMenu() {
+		similarMenu.removeAll();
+		if(currentTracklist != null) {
+			for(int i = 0; i < currentTracklist.getItems().length; i++) {
+				TrackSimplified track = currentTracklist.getItems()[i];
+				AudioFeatures af = currentAudioFeatures[i];
+				String trackName = track.getName();
+				if(track.getName().length() > 24) { // Shorten name
+					trackName = track.getName().substring(0, 22);
+					trackName += "...";
+				}
+				JMenuItem addItem = new JMenuItem(String.format("%d. - %s", track.getTrackNumber(), trackName));
+				addItem.addActionListener(new ActionListener() {
+					@Override
+					public void actionPerformed(ActionEvent e) {
+						List<AlbumData> tracks = findSimilarTracks(track, af);
+						displaySimilarTracks(track, tracks);
+					}
+				});
+				similarMenu.add(addItem);
+			}
+			similarMenu.addSeparator();
+			similarMenu.add(toggleLimiter);
+		}
+		else {
+			JMenuItem similarDefault = new JMenuItem("No current tracklist");
+			similarDefault.setEnabled(false);
+			similarMenu.add(similarDefault);
+		}
+	}
+	
+	private void updateCompareMenu() {
+		compareMenu.removeAll();
+		if(savedAlbums.size() > 0) {
+			for(int i = 0; i < savedAlbums.size(); i++) {
+				AlbumData sad = savedAlbums.get(i);
+				String albumDisplayName = sad.getAlbum().getName();
+				if(sad.getAlbum().getName().length() > 24) {
+					albumDisplayName = sad.getAlbum().getName().substring(0, 22);
+					albumDisplayName += "...";
+				}
+				JMenuItem addItem = new JMenuItem(albumDisplayName);
+				if(i < 10) { // Make sure we don't go over the 0-9 numbers.
+					addItem.setMnemonic(48+i); // 48 is the int of VK_0. It counts up by 1 to 57 until VK_9.
+					addItem.addActionListener(new ActionListener() {
+						@Override
+						public void actionPerformed(ActionEvent e) {
+							loadAudioFeaturesOfTrack(sad);
+							updateCompareDisplay(metadataComboBox.getSelectedIndex());
+						}
+					});
+					compareMenu.add(addItem);
+				}
+			}
+			compareMenu.addSeparator();
+	    	JMenuItem deleteItem = new JMenuItem("Delete saved albums");
+	    	deleteItem.addActionListener(new ActionListener() {
+	    		@Override
+	    		public void actionPerformed(ActionEvent e) {
+	    			deleteSavedAlbums();
+	    		}
+	    	});
+	    	compareMenu.add(deleteItem);
+		}
+		else {
+			JMenuItem compareDefault = new JMenuItem("No albums saved");
+	    	compareDefault.setEnabled(false);
+	    	compareMenu.add(compareDefault);
+		}
+	}
+	
+	private void displaySimilarTracks(TrackSimplified ts, List<AlbumData> tracks) {
+		String toDisplay = String.format("[[%s]]\n--- Similar Tracks ---\n", ts.getName());
+		if(tracks.size() == 0) {
+			compareDisplay.setText(toDisplay);
+			return;
+		}
+		for(AlbumData sad : tracks) {
+			if(!sad.getTrack(0).getId().equals(ts.getId())) {
+				toDisplay += String.format("%d. - %s by %s(%s)\n", sad.getTrack(0).getTrackNumber(), sad.getTrack(0).getName(), sad.getTrack(0).getArtists()[0].getName(), sad.getAlbum().getName());
+			}
+		}
+		compareDisplay.setText(toDisplay);
+	}
+
+	/**
+	 * Find and return an array of similar tracks to the 'key' audio features given.
+	 * @param track	The track to find similar music to
+	 * @param key	The audio features to find similar music to
+	 * @return	The array of tracks that are similar to 'key' track
+	 */
+	private List<AlbumData> findSimilarTracks(TrackSimplified track, AudioFeatures key) {
+		boolean quickSearch = SpotifyHelper.getQuickSearch();
+		List<AlbumData> similarTracks = new ArrayList<AlbumData>();
+		Artist[] artists = SpotifyHelper.getRelatedArtistsToArtist(track.getArtists()[0].getId());
+		if(artists != null && artists.length > 0) {
+			int artistCount = 0;
+			for(Artist a : artists) {
+				if(quickSearch && artistCount > 3) {
+					break;
+				}
+				Paging<AlbumSimplified> albums = SpotifyHelper.searchArtistAlbums_Sync(a.getId());
+				if(albums != null && albums.getItems().length > 0) {
+					int albumCount = 0;
+					for(AlbumSimplified alb : albums.getItems()) {
+						if(quickSearch && albumCount > 0) {
+							break;
+						}
+						Paging<TrackSimplified> tracks = SpotifyHelper.searchAlbumsTracklist_Sync(alb.getId());
+						if(tracks != null && tracks.getItems().length > 0) {
+							int trackCount = 0;
+							for(TrackSimplified t : tracks.getItems()) {
+								if(quickSearch && trackCount > 5) {
+									break;
+								}
+								AudioFeatures af = SpotifyHelper.getTrackAudioFeatures_Sync(t.getId());
+								if(af != null) {
+									if(Math.abs(key.getDanceability() - af.getDanceability()) <= ComparisonOptions.getDanceabilityMargin()
+											&& Math.abs(key.getEnergy() - af.getEnergy()) <= ComparisonOptions.getEnergyMargin()
+											&& Math.abs(key.getValence() - af.getValence()) <= ComparisonOptions.getValenceMargin()
+											&& Math.abs(key.getTempo() - af.getTempo()) <= ComparisonOptions.getTempoMargin() 
+											&& Math.abs(key.getAcousticness() - af.getAcousticness()) <= ComparisonOptions.getAcousticnessMargin()
+											&& Math.abs(key.getInstrumentalness() - af.getInstrumentalness()) <= ComparisonOptions.getInstrumentalnessMargin()
+											&& Math.abs(key.getSpeechiness() - af.getSpeechiness()) <= ComparisonOptions.getSpeechinessMargin()) { // Are these tracks within the margin of each others data?
+										AlbumData data = new AlbumData(alb, t, af);
+										similarTracks.add(data);
+									}
+								}
+								trackCount++;
+							}
+						}
+						albumCount++;
+					}
+				}
+			}
+			artistCount++;
+		}
+		/*for(AlbumData sad : savedAlbums) {
+			for(int i = 0; i < sad.getTracklist().length; i++) {
+				AudioFeatures af = sad.getAudioFeature(i);
+				if(Math.abs(key.getDanceability() - af.getDanceability()) <= ComparisonOptions.getDanceabilityMargin()
+						&& Math.abs(key.getEnergy() - af.getEnergy()) <= ComparisonOptions.getEnergyMargin()
+						&& Math.abs(key.getValence() - af.getValence()) <= ComparisonOptions.getValenceMargin()
+						&& Math.abs(key.getTempo() - af.getTempo()) <= ComparisonOptions.getTempoMargin() 
+						&& Math.abs(key.getAcousticness() - af.getAcousticness()) <= ComparisonOptions.getAcousticnessMargin()
+						&& Math.abs(key.getInstrumentalness() - af.getInstrumentalness()) <= ComparisonOptions.getInstrumentalnessMargin()
+						&& Math.abs(key.getSpeechiness() - af.getSpeechiness()) <= ComparisonOptions.getSpeechinessMargin()) { // Are these tracks within the margin of each others data?
+					similarTracks.add(new AlbumData(sad.getAlbum(), sad.getTrack(i), sad.getAudioFeature(i)));
+				}
+			}
+		}*/
+		System.out.println("Similar Track Size: " + similarTracks.size() + "\n");
+		return similarTracks;
+	}
+	private void saveAlbum() {
+		if(currentAlbum != null && currentTracklist != null && currentAudioFeatures != null) {
+			boolean isDuplicate = false; // Make sure we don't add duplicate albums
+			for(AlbumData sad : savedAlbums) {
+				if(sad.getAlbum().getId().equals(currentAlbum.getId())) {
+					isDuplicate = true;
+					break;
+				}
+			}
+			if(!isDuplicate) {
+				savedAlbums.add(new AlbumData(currentAlbum, currentTracklist, currentAudioFeatures));
+				updateCompareMenu();
+				updateSimilarMenu();
+			}
+		}
+	}
+	
+	private void deleteSavedAlbums() {
+		if(savedAlbums.size() > 0) {
+			for(int i = 0; i < savedAlbums.size(); i++) {
+				savedAlbums.remove(i);
+				i--;
+			}
+			updateCompareMenu();
+			updateSimilarMenu();
+			loadedAlbum = null;
+			compareDisplay.setText("");
+		}
+	}
+	
+	private void loadAudioFeaturesOfTrack(AlbumData sad) {
+		if(sad != null) {
+			this.loadedAlbum = sad;
+		}
 	}
 	
 	private void setSelectedAlbum(AlbumSimplified selectedAlbum) {
@@ -421,40 +881,12 @@ public class AlbumTrackViewFrame extends JFrame {
 		for(int i = 0; i < currentAudioFeatures.length; i++) {
 			currentAudioFeatures[i] = SpotifyHelper.getTrackAudioFeatures_Sync(currentTracklist.getItems()[i].getId());
 		}
-	}
-	
-	private void updateCompareMenu() {
-		compareMenu.removeAll();
-		if(savedTrackAudioFeatures.size() > 0) {
-			for(String s : savedAlbumTitles.keySet()) {
-				JMenuItem addItem = new JMenuItem(savedAlbumTitles.get(s));
-				compareMenu.add(addItem);
-			}
-		}
-		else {
-			JMenuItem compareDefault = new JMenuItem("No albums saved");
-	    	compareDefault.setEnabled(false);
-	    	compareMenu.add(compareDefault);
-		}
-	}
-	
-	private void saveAudioFeaturesOfTrack() {
-		if(currentAlbum != null && currentTracklist != null && currentAudioFeatures != null) {
-			Map<String, AudioFeatures> trackAudios = new HashMap<String, AudioFeatures>();
-			for(int i = 0; i < currentTracklist.getItems().length; i++) {
-				TrackSimplified track = currentTracklist.getItems()[i];
-				AudioFeatures audio = currentAudioFeatures[i];
-				trackAudios.put(track.getId(), audio);
-			}
-			savedTrackAudioFeatures.put(currentAlbum.getId(), trackAudios);
-			savedAlbumTitles.put(currentAlbum.getId(), currentAlbum.getName());
-			updateCompareMenu();
-		}
+		updateSimilarMenu();
 	}
 	
 	public void updateAlbumComboBox(String[] str) {
 		albumComboBox.removeAllItems();
-		for(String s : str ) {
+		for(String s : str) {
 			albumComboBox.addItem(s);
 		}
 		albumComboBox.setSelectedIndex(0);

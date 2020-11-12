@@ -31,18 +31,18 @@ import com.wrapper.spotify.model_objects.specification.TrackSimplified;
 public class AlbumTrackViewFrame extends JFrame {
 
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = 4275008654469266591L;
-	
+
 	private AlbumTrackViewFrame thisFrame;
-	
+
 	private Artist artist;
-	
+
 	private AlbumSimplified currentAlbum;
 	private Paging<TrackSimplified> currentTracklist;
 	private AudioFeatures[] currentAudioFeatures;
-	
+
 	private JMenu compareMenu;
 	private JMenu similarMenu;
 	private JCheckBoxMenuItem toggleLimiter;
@@ -51,13 +51,13 @@ public class AlbumTrackViewFrame extends JFrame {
 	private JTextArea tracklistDisplay;
 	private JTextArea compareDisplay;
 	private JTextArea metadataDescription;
-	
+
 	private List<AlbumData> savedAlbums;
 	private AlbumData loadedAlbum;
-	
+
 	private String currentSummarizedData;
 	private String loadedSummarizedData;
-	
+
 	public AlbumTrackViewFrame() {
 		thisFrame = this;
 		this.setTitle("Spotify Track Metadata Viewer");
@@ -65,46 +65,46 @@ public class AlbumTrackViewFrame extends JFrame {
 		this.setLocation(App.SCREEN_SIZE.width/2-this.getSize().width/2, App.SCREEN_SIZE.height/2-this.getSize().height/2);
     	this.setResizable(false);
     	this.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
-    	
+
     	savedAlbums = new ArrayList<AlbumData>();
     	currentSummarizedData = "";
     	loadedSummarizedData = "";
-    	
+
     	JPanel panel = new JPanel();
     	panel.setLayout(null);
-    	
+
     	JMenuBar menuBar = new JMenuBar();
     	JMenu menu = new JMenu("File");
     	menu.getAccessibleContext().setAccessibleDescription(
     			"The file menu");
-    	
+
     	JMenuItem saveItem = new JMenuItem("Save Album Metadata");
     	saveItem.setMnemonic(KeyEvent.VK_S);
     	saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, ActionEvent.CTRL_MASK));
     	saveItem.addActionListener(new ActionListener() {
-    		
+
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				saveAlbum();
 			}
     	});
     	menu.add(saveItem);
-    	
+
     	compareMenu = new JMenu("Compare");
     	compareMenu.setMnemonic(KeyEvent.VK_C);
     	compareMenu.getAccessibleContext().setAccessibleDescription(
     			"The compare menu");
-    	
+
     	updateCompareMenu();
     	menu.add(compareMenu);
-    	
+
     	similarMenu = new JMenu("Similarities");
     	similarMenu.setMnemonic(KeyEvent.VK_M);
     	similarMenu.getAccessibleContext().setAccessibleDescription(
     			"The similarities menu");
     	updateSimilarMenu();
     	menu.add(similarMenu);
-    	
+
     	toggleLimiter = new JCheckBoxMenuItem("Quick Search");
     	toggleLimiter.setState(true);
     	toggleLimiter.addActionListener(new ActionListener() {
@@ -113,7 +113,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				SpotifyHelper.setQuickSearch(toggleLimiter.getState());
 			}
     	});
-    	
+
     	JMenuItem exitItem = new JMenuItem("Close");
     	exitItem.setMnemonic(KeyEvent.VK_O);
     	exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, ActionEvent.CTRL_MASK));
@@ -125,13 +125,13 @@ public class AlbumTrackViewFrame extends JFrame {
     	});
     	menu.add(exitItem);
     	menuBar.add(menu);
-    	
+
     	this.setJMenuBar(menuBar);
-    	
+
     	JLabel albumSelectLbl = new JLabel("Select album");
     	albumSelectLbl.setBounds(156, 10, 85, 20);
     	panel.add(albumSelectLbl);
-    	
+
     	String[] metadataSelections = {"Duration", "Key", "Modality", "Time Signature", "Acousticness", "Danceability", "Energy", "Instrumentalness", "Liveness", "Loudness", "Speechiness", "Valence", "Tempo"};
     	metadataComboBox = new JComboBox<String>(metadataSelections) {
 			private static final long serialVersionUID = 1L;
@@ -147,10 +147,10 @@ public class AlbumTrackViewFrame extends JFrame {
     	};
     	metadataComboBox.setBounds(125, 70, 140, 20);
     	panel.add(metadataComboBox);
-    	
+
     	albumComboBox = new JComboBox<String>() {
 			private static final long serialVersionUID = 1L;
-			
+
 			@Override
     		public void setSelectedIndex(int anIndex) {
     			super.setSelectedIndex(anIndex);
@@ -160,27 +160,27 @@ public class AlbumTrackViewFrame extends JFrame {
     	};
     	albumComboBox.setBounds(125, 40, 140, 20);
     	panel.add(albumComboBox);
-    	
+
     	tracklistDisplay = new JTextArea();
     	tracklistDisplay.setBounds(this.getSize().width/2, 10, 1000, 1000);
     	tracklistDisplay.setEditable(false);
-    	
+
     	JScrollPane scrollPane1 = new JScrollPane(tracklistDisplay);
     	scrollPane1.setBounds(this.getSize().width/2, 10, 370, 540/2);
     	panel.add(scrollPane1);
-    	
+
     	compareDisplay = new JTextArea();
     	compareDisplay.setBounds(this.getSize().width, 280, 1000, 1000);
     	compareDisplay.setEditable(false);
-    	
+
     	JScrollPane scrollPane2 = new JScrollPane(compareDisplay);
     	scrollPane2.setBounds(this.getSize().width/2, 290, 370, 500/2);
     	panel.add(scrollPane2);
-    	
+
     	JLabel metadataDescLbl = new JLabel("Description");
     	metadataDescLbl.setBounds(163, 200, 85, 20);
     	panel.add(metadataDescLbl);
-    	
+
     	metadataDescription = new JTextArea();
     	metadataDescription.setEditable(false);
     	metadataDescription.setLineWrap(true);
@@ -189,7 +189,7 @@ public class AlbumTrackViewFrame extends JFrame {
     	metadataDescription.setFont(UIManager.getDefaults().getFont("Label.font"));
     	metadataDescription.setBounds(10, 230, 375, 319/2);
     	panel.add(metadataDescription);
-    	
+
     	JButton summarizeAlbumBtn = new JButton("Summarize");
     	summarizeAlbumBtn.setBounds(135, this.getSize().height-150, 120, 50);
     	summarizeAlbumBtn.addActionListener(new ActionListener() {
@@ -203,10 +203,10 @@ public class AlbumTrackViewFrame extends JFrame {
 			}
     	});
     	panel.add(summarizeAlbumBtn);
-    	
+
     	this.add(panel);
 	}
-	
+
 	private void updateTracklistDisplay(int index) {
 		currentSummarizedData = "";
 		if(currentTracklist == null && currentAlbum == null) {
@@ -233,7 +233,7 @@ public class AlbumTrackViewFrame extends JFrame {
 					TrackSimplified track = currentTracklist.getItems()[i];
 					String key = "";
 					switch(currentAudioFeatures[i].getKey()) {
-						case -1: 
+						case -1:
 						{
 							key = "Undetected";
 							break;
@@ -451,7 +451,7 @@ public class AlbumTrackViewFrame extends JFrame {
 		}
 		tracklistDisplay.setText(toDisplay);
 	}
-	
+
 	private void updateCompareDisplay(int index) {
 		loadedSummarizedData = "";
 		if(loadedAlbum == null) {
@@ -477,7 +477,7 @@ public class AlbumTrackViewFrame extends JFrame {
 					TrackSimplified track = loadedAlbum.getTrack(i);
 					String key = "";
 					switch(loadedAlbum.getAudioFeature(i).getKey()) {
-						case -1: 
+						case -1:
 						{
 							key = "Undetected";
 							break;
@@ -683,7 +683,7 @@ public class AlbumTrackViewFrame extends JFrame {
 		}
 		compareDisplay.setText(toDisplay);
 	}
-	
+
 	private void updateSimilarMenu() {
 		similarMenu.removeAll();
 		if(currentTracklist != null) {
@@ -713,8 +713,8 @@ public class AlbumTrackViewFrame extends JFrame {
 			similarDefault.setEnabled(false);
 			similarMenu.add(similarDefault);
 		}
+		compareDisplay.setText(toDisplay);
 	}
-	
 	private void updateCompareMenu() {
 		compareMenu.removeAll();
 		if(savedAlbums.size() > 0) {
@@ -754,7 +754,7 @@ public class AlbumTrackViewFrame extends JFrame {
 	    	compareMenu.add(compareDefault);
 		}
 	}
-	
+
 	private void displaySimilarTracks(TrackSimplified ts, List<AlbumData> tracks) {
 		String toDisplay = String.format("[[%s]]\n--- Similar Tracks ---\n", ts.getName());
 		if(tracks.size() == 0) {
@@ -804,7 +804,7 @@ public class AlbumTrackViewFrame extends JFrame {
 									if(Math.abs(key.getDanceability() - af.getDanceability()) <= ComparisonOptions.getDanceabilityMargin()
 											&& Math.abs(key.getEnergy() - af.getEnergy()) <= ComparisonOptions.getEnergyMargin()
 											&& Math.abs(key.getValence() - af.getValence()) <= ComparisonOptions.getValenceMargin()
-											&& Math.abs(key.getTempo() - af.getTempo()) <= ComparisonOptions.getTempoMargin() 
+											&& Math.abs(key.getTempo() - af.getTempo()) <= ComparisonOptions.getTempoMargin()
 											&& Math.abs(key.getAcousticness() - af.getAcousticness()) <= ComparisonOptions.getAcousticnessMargin()
 											&& Math.abs(key.getInstrumentalness() - af.getInstrumentalness()) <= ComparisonOptions.getInstrumentalnessMargin()
 											&& Math.abs(key.getSpeechiness() - af.getSpeechiness()) <= ComparisonOptions.getSpeechinessMargin()) { // Are these tracks within the margin of each others data?
@@ -827,7 +827,7 @@ public class AlbumTrackViewFrame extends JFrame {
 				if(Math.abs(key.getDanceability() - af.getDanceability()) <= ComparisonOptions.getDanceabilityMargin()
 						&& Math.abs(key.getEnergy() - af.getEnergy()) <= ComparisonOptions.getEnergyMargin()
 						&& Math.abs(key.getValence() - af.getValence()) <= ComparisonOptions.getValenceMargin()
-						&& Math.abs(key.getTempo() - af.getTempo()) <= ComparisonOptions.getTempoMargin() 
+						&& Math.abs(key.getTempo() - af.getTempo()) <= ComparisonOptions.getTempoMargin()
 						&& Math.abs(key.getAcousticness() - af.getAcousticness()) <= ComparisonOptions.getAcousticnessMargin()
 						&& Math.abs(key.getInstrumentalness() - af.getInstrumentalness()) <= ComparisonOptions.getInstrumentalnessMargin()
 						&& Math.abs(key.getSpeechiness() - af.getSpeechiness()) <= ComparisonOptions.getSpeechinessMargin()) { // Are these tracks within the margin of each others data?
@@ -854,7 +854,7 @@ public class AlbumTrackViewFrame extends JFrame {
 			}
 		}
 	}
-	
+
 	private void deleteSavedAlbums() {
 		if(savedAlbums.size() > 0) {
 			for(int i = 0; i < savedAlbums.size(); i++) {
@@ -867,13 +867,13 @@ public class AlbumTrackViewFrame extends JFrame {
 			compareDisplay.setText("");
 		}
 	}
-	
+
 	private void loadAudioFeaturesOfTrack(AlbumData sad) {
 		if(sad != null) {
 			this.loadedAlbum = sad;
 		}
 	}
-	
+
 	private void setSelectedAlbum(AlbumSimplified selectedAlbum) {
 		currentAlbum = selectedAlbum;
 		currentTracklist = SpotifyHelper.searchAlbumsTracklist_Sync(selectedAlbum.getId());
@@ -883,7 +883,7 @@ public class AlbumTrackViewFrame extends JFrame {
 		}
 		updateSimilarMenu();
 	}
-	
+
 	public void updateAlbumComboBox(String[] str) {
 		albumComboBox.removeAllItems();
 		for(String s : str) {

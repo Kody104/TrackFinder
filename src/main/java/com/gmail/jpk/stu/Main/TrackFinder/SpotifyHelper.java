@@ -34,10 +34,10 @@ import com.wrapper.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 public class SpotifyHelper {
 	public static boolean quickSearch = true;
 	private static int queries = 0;
-	private static final String clientId = "b2398df50ee0449b933bb3e72abdff18";
-	private static final String clientSecret = "0a786b62e04e49848498c75560baf2f8";
+	private static final String clientId = ""; /* These */
+	private static final String clientSecret = "";/* are */
+	private static final String refreshToken = ""; /* secret ! */
 	private static final URI redirectUri = SpotifyHttpManager.makeUri("http://localhost:8888/callback");
-	private static final String refreshToken = "AQAL2RC18Nc-04ARqKpz6FolsklC_3HQ8C8KOC6s988R1EyFuqSfvz6A7ZRlN5AfQKn3jZFzKKBmFE-JFsN9pj28KX2l3WIKlfsMEyxlGGE0Mfp6zXwB3vubZOLkRS4tXB0";
 	private static final SpotifyApi spotifyApi = new SpotifyApi.Builder()
 			.setClientId(clientId)
 			.setClientSecret(clientSecret)
